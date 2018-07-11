@@ -26,7 +26,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Sync forks of a GitHub organization')
 
     parser.add_argument('org', help='a GitHub organization name from which forks will be synced')
-    parser.add_argument('--token', help='a GitHub access token')
+    parser.add_argument('--token', help='a GitHub access token to work around default rate limit')
 
     args = parser.parse_args()
 
@@ -41,7 +41,7 @@ def gh_sync_fork(args, fork):
     response = requests.get(url)
     repository = json.loads(response.text)
 
-    path = os.path.join(tempfile.gettempdir(), name)
+    path = resolve_repository_directory(name)
 
     if os.path.isdir(path):
         try:
@@ -49,27 +49,22 @@ def gh_sync_fork(args, fork):
         except subprocess.CalledProcessError:
             shutil.rmtree(path)
             git_create_fork(repository)
+            git_update_fork(repository)
+
     else:
         git_create_fork(repository)
+        git_update_fork(repository)
 
 
 def git_create_fork(repository):
     git_clone_repository(repository)
     git_add_upstream(repository)
 
-    git_update_fork(repository)
-
 
 def git_clone_repository(repository):
     command = 'git clone {ssh_url}'.format(ssh_url=repository['ssh_url'])
 
     return subprocess.run(command, cwd=tempfile.gettempdir(), shell=True, check=True)
-
-
-def git_update_fork(repository):
-    git_fetch_upstream(repository)
-    git_checkout(repository)
-    git_merge_upstream(repository)
 
 
 def git_add_upstream(repository):
@@ -83,7 +78,14 @@ def git_add_upstream(repository):
 
     command = 'git remote add upstream {upstream_url}'.format(upstream_url=url)
 
-    return subprocess.run(command, cwd=os.path.join(tempfile.gettempdir(), name), shell=True, check=True)
+    return subprocess.run(command, cwd=resolve_repository_directory(name), shell=True, check=True)
+
+
+def git_update_fork(repository):
+    git_fetch_upstream(repository)
+    git_checkout(repository)
+    git_merge_upstream(repository)
+    git_push(repository)
 
 
 def git_fetch_upstream(repository):
@@ -91,7 +93,7 @@ def git_fetch_upstream(repository):
 
     command = 'git fetch upstream'
 
-    return subprocess.run(command, cwd=os.path.join(tempfile.gettempdir(), name), shell=True, check=True)
+    return subprocess.run(command, cwd=resolve_repository_directory(name), shell=True, check=True)
 
 
 def git_checkout(repository):
@@ -100,7 +102,7 @@ def git_checkout(repository):
 
     command = 'git checkout {default_branch}'.format(default_branch=default_branch)
 
-    return subprocess.run(command, cwd=os.path.join(tempfile.gettempdir(), name), shell=True, check=True)
+    return subprocess.run(command, cwd=resolve_repository_directory(name), shell=True, check=True)
 
 
 def git_merge_upstream(repository):
@@ -109,7 +111,19 @@ def git_merge_upstream(repository):
 
     command = 'git merge upstream/{default_branch}'.format(default_branch=default_branch)
 
-    return subprocess.run(command, cwd=os.path.join(tempfile.gettempdir(), name), shell=True, check=True)
+    return subprocess.run(command, cwd=resolve_repository_directory(name), shell=True, check=True)
+
+
+def git_push(repository):
+    name = repository['parent']['name']
+
+    command = 'git push --all && git push --tags'
+
+    return subprocess.run(command, cwd=resolve_repository_directory(name), shell=True, check=True)
+
+
+def resolve_repository_directory(name):
+    return os.path.join(tempfile.gettempdir(), name)
 
 
 if __name__ == '__main__':
