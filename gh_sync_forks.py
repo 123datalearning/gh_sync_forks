@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 
 import argparse
-
-import os
-import tempfile
-import subprocess
-import shutil
-
 import json
+import os
+import shutil
+import subprocess
+import tempfile
+
 import requests
 
 
 def gh_sync_forks():
     args = parse_args()
 
-    forks_url = 'https://api.github.com/orgs/{org}/repos?type=forks&access_token={access_token}'.format(org=args.org, access_token=args.token)
-    forks_response = requests.get(forks_url)
-    forks = json.loads(forks_response.text)
+    template = 'https://api.github.com/orgs/{org}/repos?type=forks&access_token={access_token}'
+    url = template.format(org=args.org, access_token=args.token)
+    response = requests.get(url)
+    forks = json.loads(response.text)
 
     for fork in forks:
         gh_sync_fork(args, fork)
@@ -34,18 +34,19 @@ def parse_args():
 
 
 def gh_sync_fork(args, fork):
-    fork_name = fork['name']
+    name = fork['name']
 
-    repository_url = 'https://api.github.com/repos/{org}/{name}?access_token={access_token}'.format(org=args.org, name=fork_name, access_token=args.token)
-    repository_response = requests.get(repository_url)
-    repository = json.loads(repository_response.text)
+    template = 'https://api.github.com/repos/{org}/{name}?access_token={access_token}'
+    url = template.format(org=args.org, name=name, access_token=args.token)
+    response = requests.get(url)
+    repository = json.loads(response.text)
 
-    path = os.path.join(tempfile.gettempdir(), fork_name)
+    path = os.path.join(tempfile.gettempdir(), name)
 
     if os.path.isdir(path):
         try:
             git_update_fork(repository)
-        except:
+        except subprocess.CalledProcessError:
             shutil.rmtree(path)
             git_create_fork(repository)
     else:
@@ -67,18 +68,20 @@ def git_clone_repository(repository):
 
 def git_update_fork(repository):
     git_fetch_upstream(repository)
-    git_checkout_master(repository)
+    git_checkout(repository)
     git_merge_upstream(repository)
 
 
 def git_add_upstream(repository):
     original_owner = repository['parent']['owner']['login']
     original_repository = repository['parent']['name']
-    upstream_url = 'https://github.com/{original_owner}/{original_repository}.git'.format(original_owner=original_owner, original_repository=original_repository)
+
+    template = 'https://github.com/{original_owner}/{original_repository}.git'
+    url = template.format(original_owner=original_owner, original_repository=original_repository)
 
     name = repository['parent']['name']
 
-    command = 'git remote add upstream {upstream_url}'.format(upstream_url=upstream_url)
+    command = 'git remote add upstream {upstream_url}'.format(upstream_url=url)
 
     return subprocess.run(command, cwd=os.path.join(tempfile.gettempdir(), name), shell=True, check=True)
 
@@ -91,10 +94,9 @@ def git_fetch_upstream(repository):
     return subprocess.run(command, cwd=os.path.join(tempfile.gettempdir(), name), shell=True, check=True)
 
 
-def git_checkout_master(repository):
-    default_branch = repository['parent']['default_branch']
-
+def git_checkout(repository):
     name = repository['parent']['name']
+    default_branch = repository['parent']['default_branch']
 
     command = 'git checkout {default_branch}'.format(default_branch=default_branch)
 
@@ -103,8 +105,9 @@ def git_checkout_master(repository):
 
 def git_merge_upstream(repository):
     name = repository['parent']['name']
+    default_branch = repository['parent']['default_branch']
 
-    command = 'git merge upstream/master'
+    command = 'git merge upstream/{default_branch}'.format(default_branch=default_branch)
 
     return subprocess.run(command, cwd=os.path.join(tempfile.gettempdir(), name), shell=True, check=True)
 
