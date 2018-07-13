@@ -43,6 +43,9 @@ def gh_sync_fork(args, fork):
 
     path = resolve_repository_directory(name)
 
+    if os.path.isfile(path):
+        os.remove(path)
+
     if os.path.isdir(path):
         try:
             git_update_fork(repository)
