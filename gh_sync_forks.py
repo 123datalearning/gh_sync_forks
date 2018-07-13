@@ -23,12 +23,21 @@ def gh_sync_forks():
 
 
 def parse_args():
+    directory = tempfile.gettempdir()
+
     parser = argparse.ArgumentParser(description='Sync forks of a GitHub organization')
 
     parser.add_argument('org', help='a GitHub organization name from which forks will be synced')
     parser.add_argument('--token', help='a GitHub access token to work around default rate limit')
+    parser.add_argument('--directory', help='a local directory in which repositories will be cloned (default: [{directory}])'.format(directory=directory), default=directory)
 
     args = parser.parse_args()
+
+    if os.path.isfile(args.directory):
+        os.remove(args.directory)
+
+    if not os.path.isdir(args.directory):
+        os.mkdir(args.directory)
 
     return args
 
@@ -41,36 +50,38 @@ def gh_sync_fork(args, fork):
     response = requests.get(url)
     repository = json.loads(response.text)
 
-    path = resolve_repository_directory(name)
+    directory = args.directory
+
+    path = resolve_repository_directory(directory, name)
 
     if os.path.isfile(path):
         os.remove(path)
 
     if os.path.isdir(path):
         try:
-            git_update_fork(repository)
+            git_update_fork(directory, repository)
         except subprocess.CalledProcessError:
             shutil.rmtree(path)
-            git_create_fork(repository)
-            git_update_fork(repository)
+            git_create_fork(directory, repository)
+            git_update_fork(directory, repository)
 
     else:
-        git_create_fork(repository)
-        git_update_fork(repository)
+        git_create_fork(directory, repository)
+        git_update_fork(directory, repository)
 
 
-def git_create_fork(repository):
-    git_clone_repository(repository)
-    git_add_upstream(repository)
+def git_create_fork(directory, repository):
+    git_clone_repository(directory, repository)
+    git_add_upstream(directory, repository)
 
 
-def git_clone_repository(repository):
+def git_clone_repository(directory, repository):
     command = 'git clone {ssh_url}'.format(ssh_url=repository['ssh_url'])
 
-    return subprocess.run(command, cwd=tempfile.gettempdir(), shell=True, check=True)
+    return subprocess.run(command, cwd=directory, shell=True, check=True)
 
 
-def git_add_upstream(repository):
+def git_add_upstream(directory, repository):
     original_owner = repository['parent']['owner']['login']
     original_repository = repository['parent']['name']
 
@@ -81,52 +92,52 @@ def git_add_upstream(repository):
 
     command = 'git remote add upstream {upstream_url}'.format(upstream_url=url)
 
-    return subprocess.run(command, cwd=resolve_repository_directory(name), shell=True, check=True)
+    return subprocess.run(command, cwd=resolve_repository_directory(directory, name), shell=True, check=True)
 
 
-def git_update_fork(repository):
-    git_fetch_upstream(repository)
-    git_checkout(repository)
-    git_merge_upstream(repository)
-    git_push(repository)
+def git_update_fork(directory, repository):
+    git_fetch_upstream(directory, repository)
+    git_checkout(directory, repository)
+    git_merge_upstream(directory, repository)
+    git_push(directory, repository)
 
 
-def git_fetch_upstream(repository):
+def git_fetch_upstream(directory, repository):
     name = repository['parent']['name']
 
     command = 'git fetch upstream'
 
-    return subprocess.run(command, cwd=resolve_repository_directory(name), shell=True, check=True)
+    return subprocess.run(command, cwd=resolve_repository_directory(directory, name), shell=True, check=True)
 
 
-def git_checkout(repository):
+def git_checkout(directory, repository):
     name = repository['parent']['name']
     default_branch = repository['parent']['default_branch']
 
     command = 'git checkout {default_branch}'.format(default_branch=default_branch)
 
-    return subprocess.run(command, cwd=resolve_repository_directory(name), shell=True, check=True)
+    return subprocess.run(command, cwd=resolve_repository_directory(directory, name), shell=True, check=True)
 
 
-def git_merge_upstream(repository):
+def git_merge_upstream(directory, repository):
     name = repository['parent']['name']
     default_branch = repository['parent']['default_branch']
 
     command = 'git merge upstream/{default_branch}'.format(default_branch=default_branch)
 
-    return subprocess.run(command, cwd=resolve_repository_directory(name), shell=True, check=True)
+    return subprocess.run(command, cwd=resolve_repository_directory(directory, name), shell=True, check=True)
 
 
-def git_push(repository):
+def git_push(directory, repository):
     name = repository['parent']['name']
 
     command = 'git push --all && git push --tags'
 
-    return subprocess.run(command, cwd=resolve_repository_directory(name), shell=True, check=True)
+    return subprocess.run(command, cwd=resolve_repository_directory(directory, name), shell=True, check=True)
 
 
-def resolve_repository_directory(name):
-    return os.path.join(tempfile.gettempdir(), name)
+def resolve_repository_directory(directory, name):
+    return os.path.join(directory, name)
 
 
 if __name__ == '__main__':
