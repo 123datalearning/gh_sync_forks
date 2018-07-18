@@ -10,18 +10,6 @@ import tempfile
 import requests
 
 
-def gh_sync_forks():
-    args = parse_args()
-
-    template = 'https://api.github.com/orgs/{org}/repos?type=forks&access_token={access_token}'
-    url = template.format(org=args.org, access_token=args.token)
-    response = requests.get(url)
-    forks = json.loads(response.text)
-
-    for fork in forks:
-        gh_sync_fork(args, fork)
-
-
 def parse_args():
     directory = tempfile.gettempdir()
 
@@ -42,11 +30,31 @@ def parse_args():
     return args
 
 
-def gh_sync_fork(args, fork):
+def gh_sync_forks_from_page(org, token, page):
+    template = 'https://api.github.com/orgs/{org}/repos?type=forks&access_token={access_token}&page={page}'
+    url = template.format(org=org, access_token=token, page=page)
+
+    gh_sync_forks_from_url(org, token, url)
+
+
+def gh_sync_forks_from_url(org, token, url):
+    response = requests.get(url)
+    forks = json.loads(response.text)
+
+    for fork in forks:
+        gh_sync_fork(fork, org, token)
+
+    next_url = response.links.get('next', {}).get('url', '')
+
+    if next_url:
+        gh_sync_forks_from_url(org, token, next_url)
+
+
+def gh_sync_fork(fork, org, token):
     name = fork['name']
 
     template = 'https://api.github.com/repos/{org}/{name}?access_token={access_token}'
-    url = template.format(org=args.org, name=name, access_token=args.token)
+    url = template.format(org=org, name=name, access_token=token)
     response = requests.get(url)
     repository = json.loads(response.text)
 
@@ -141,4 +149,6 @@ def resolve_repository_directory(directory, name):
 
 
 if __name__ == '__main__':
-    gh_sync_forks()
+    args = parse_args()
+
+    gh_sync_forks_from_page(args.org, args.token, 1)
