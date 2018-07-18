@@ -73,7 +73,6 @@ class GitHubForkSync:
                 shutil.rmtree(path)
                 self.git_create_fork(repository)
                 self.git_update_fork(repository)
-
         else:
             self.git_create_fork(repository)
             self.git_update_fork(repository)
