@@ -5,150 +5,154 @@ import json
 import os
 import shutil
 import subprocess
-import tempfile
 
 import requests
 
 
 def parse_args():
-    directory = tempfile.gettempdir()
-
     parser = argparse.ArgumentParser(description='Sync forks of a GitHub organization')
 
-    parser.add_argument('org', help='a GitHub organization name from which forks will be synced')
-    parser.add_argument('--token', help='a GitHub access token to work around default rate limit')
-    parser.add_argument('--directory', help='a local directory in which repositories will be cloned (default: [{directory}])'.format(directory=directory), default=directory)
+    parser.add_argument('organization', help='a GitHub organization name from which forks will be synced')
+    parser.add_argument('access_token', help='a GitHub access token to work around default rate limit')
+    parser.add_argument('target_directory', help='a local directory in which repositories will be cloned')
 
-    args = parser.parse_args()
+    arguments = parser.parse_args()
 
-    if os.path.isfile(args.directory):
-        os.remove(args.directory)
+    if os.path.isfile(arguments.target_directory):
+        os.remove(arguments.target_directory)
 
-    if not os.path.isdir(args.directory):
-        os.mkdir(args.directory)
+    if not os.path.isdir(arguments.target_directory):
+        os.mkdir(arguments.target_directory)
 
-    return args
-
-
-def gh_sync_forks_from_page(org, token, page):
-    template = 'https://api.github.com/orgs/{org}/repos?type=forks&access_token={access_token}&page={page}'
-    url = template.format(org=org, access_token=token, page=page)
-
-    gh_sync_forks_from_url(org, token, url)
+    return arguments
 
 
-def gh_sync_forks_from_url(org, token, url):
-    response = requests.get(url)
-    forks = json.loads(response.text)
+class GitHubForkSync:
+    def __init__(self, organization, access_token, target_directory):
+        self.organization = organization
+        self.access_token = access_token
+        self.target_directory = target_directory
 
-    for fork in forks:
-        gh_sync_fork(fork, org, token)
+    def sync_forks_from_page(self, page):
+        template = 'https://api.github.com/orgs/{organization}/repos?type=forks&access_token={access_token}&page={page}'
+        url = template.format(organization=self.organization, access_token=self.access_token, page=page)
 
-    next_url = response.links.get('next', {}).get('url', '')
+        self.sync_forks_from_url(url)
 
-    if next_url:
-        gh_sync_forks_from_url(org, token, next_url)
+    def sync_forks_from_url(self, url):
+        response = requests.get(url)
+        forks = json.loads(response.text)
 
+        for fork in forks:
+            self.sync_fork(fork)
 
-def gh_sync_fork(fork, org, token):
-    name = fork['name']
+        next_url = response.links.get('next', {}).get('url', '')
 
-    template = 'https://api.github.com/repos/{org}/{name}?access_token={access_token}'
-    url = template.format(org=org, name=name, access_token=token)
-    response = requests.get(url)
-    repository = json.loads(response.text)
+        if next_url:
+            self.sync_forks_from_url(next_url)
 
-    directory = args.directory
+    def sync_fork(self, fork):
+        name = fork['name']
 
-    path = resolve_repository_directory(directory, name)
+        template = 'https://api.github.com/repos/{organization}/{name}?access_token={access_token}'
+        url = template.format(organization=self.organization, name=name, access_token=self.access_token)
+        response = requests.get(url)
+        repository = json.loads(response.text)
 
-    if os.path.isfile(path):
-        os.remove(path)
+        print(repository['clone_url'])
 
-    if os.path.isdir(path):
-        try:
-            git_update_fork(directory, repository)
-        except subprocess.CalledProcessError:
-            shutil.rmtree(path)
-            git_create_fork(directory, repository)
-            git_update_fork(directory, repository)
+        path = self.resolve_repository_directory(name)
 
-    else:
-        git_create_fork(directory, repository)
-        git_update_fork(directory, repository)
+        if os.path.isfile(path):
+            os.remove(path)
 
+        if os.path.isdir(path):
+            try:
+                self.git_update_fork(repository)
+            except subprocess.CalledProcessError:
+                shutil.rmtree(path)
+                self.git_create_fork(repository)
+                self.git_update_fork(repository)
 
-def git_create_fork(directory, repository):
-    git_clone_repository(directory, repository)
-    git_add_upstream(directory, repository)
+        else:
+            self.git_create_fork(repository)
+            self.git_update_fork(repository)
 
+    def git_create_fork(self, repository):
+        self.git_clone_repository(repository)
+        self.git_add_upstream(repository)
 
-def git_clone_repository(directory, repository):
-    command = 'git clone {ssh_url}'.format(ssh_url=repository['ssh_url'])
+    def git_clone_repository(self, repository):
+        command = 'git clone {ssh_url}'.format(ssh_url=repository['ssh_url'])
 
-    return subprocess.run(command, cwd=directory, shell=True, check=True)
+        return self.execute_without_repository_name(command)
 
+    def git_add_upstream(self, repository):
+        original_owner = repository['parent']['owner']['login']
+        original_repository = repository['parent']['name']
 
-def git_add_upstream(directory, repository):
-    original_owner = repository['parent']['owner']['login']
-    original_repository = repository['parent']['name']
+        template = 'https://github.com/{original_owner}/{original_repository}.git'
+        url = template.format(original_owner=original_owner, original_repository=original_repository)
 
-    template = 'https://github.com/{original_owner}/{original_repository}.git'
-    url = template.format(original_owner=original_owner, original_repository=original_repository)
+        name = repository['parent']['name']
 
-    name = repository['parent']['name']
+        command = 'git remote add upstream {upstream_url}'.format(upstream_url=url)
 
-    command = 'git remote add upstream {upstream_url}'.format(upstream_url=url)
+        return self.execute_with_repository_name(command, name)
 
-    return subprocess.run(command, cwd=resolve_repository_directory(directory, name), shell=True, check=True)
+    def git_update_fork(self, repository):
+        self.git_fetch_upstream(repository)
+        self.git_checkout(repository)
+        self.git_merge_upstream(repository)
+        self.git_push(repository)
 
+    def git_fetch_upstream(self, repository):
+        name = repository['parent']['name']
 
-def git_update_fork(directory, repository):
-    git_fetch_upstream(directory, repository)
-    git_checkout(directory, repository)
-    git_merge_upstream(directory, repository)
-    git_push(directory, repository)
+        command = 'git fetch upstream'
 
+        return self.execute_with_repository_name(command, name)
 
-def git_fetch_upstream(directory, repository):
-    name = repository['parent']['name']
+    def git_checkout(self, repository):
+        name = repository['parent']['name']
+        default_branch = repository['parent']['default_branch']
 
-    command = 'git fetch upstream'
+        command = 'git checkout {default_branch}'.format(default_branch=default_branch)
 
-    return subprocess.run(command, cwd=resolve_repository_directory(directory, name), shell=True, check=True)
+        return self.execute_with_repository_name(command, name)
 
+    def git_merge_upstream(self, repository):
+        name = repository['parent']['name']
+        default_branch = repository['parent']['default_branch']
 
-def git_checkout(directory, repository):
-    name = repository['parent']['name']
-    default_branch = repository['parent']['default_branch']
+        command = 'git merge upstream/{default_branch}'.format(default_branch=default_branch)
 
-    command = 'git checkout {default_branch}'.format(default_branch=default_branch)
+        return self.execute_with_repository_name(command, name)
 
-    return subprocess.run(command, cwd=resolve_repository_directory(directory, name), shell=True, check=True)
+    def git_push(self, repository):
+        name = repository['parent']['name']
 
+        command = 'git push --all && git push --tags'
 
-def git_merge_upstream(directory, repository):
-    name = repository['parent']['name']
-    default_branch = repository['parent']['default_branch']
+        return self.execute_with_repository_name(command, name)
 
-    command = 'git merge upstream/{default_branch}'.format(default_branch=default_branch)
+    def execute_without_repository_name(self, command):
+        return self.execute(command, self.target_directory)
 
-    return subprocess.run(command, cwd=resolve_repository_directory(directory, name), shell=True, check=True)
+    def execute_with_repository_name(self, command, name):
+        return self.execute(command, self.resolve_repository_directory(name))
 
+    @staticmethod
+    def execute(command, cwd):
+        return subprocess.run(command, cwd=cwd, shell=True, check=True)
 
-def git_push(directory, repository):
-    name = repository['parent']['name']
-
-    command = 'git push --all && git push --tags'
-
-    return subprocess.run(command, cwd=resolve_repository_directory(directory, name), shell=True, check=True)
-
-
-def resolve_repository_directory(directory, name):
-    return os.path.join(directory, name)
+    def resolve_repository_directory(self, name):
+        return os.path.join(self.target_directory, name)
 
 
 if __name__ == '__main__':
     args = parse_args()
 
-    gh_sync_forks_from_page(args.org, args.token, 1)
+    gh_fork_sync = GitHubForkSync(args.organization, args.access_token, args.target_directory)
+
+    gh_fork_sync.sync_forks_from_page(1)
