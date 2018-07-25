@@ -1,6 +1,6 @@
 # GitHub Sync Forks
 
-A simple Python 3 script to sync forks of a given organization.
+A Python 3 script to sync forks of a GitHub organization.
 
 ## Usage
 
@@ -15,6 +15,14 @@ A simple Python 3 script to sync forks of a given organization.
     
     optional arguments:
       -h, --help        show this help message and exit
+
+## Developers
+
+Conda environment has been created as shown below.
+
+    conda create --no-default-packages -p .conda python=3.7
+    source activate .conda
+    conda install requests
 
 ## Credits
 
