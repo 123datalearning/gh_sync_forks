@@ -16,6 +16,9 @@ def parse_args():
     parser.add_argument('access_token', help='a GitHub access token to work around default rate limit')
     parser.add_argument('target_directory', help='a local directory in which repositories will be cloned')
 
+    parser.add_argument("-c", "--clean", help="clean Git repository", action="store_true")
+    parser.add_argument("-r", "--reset", help="reset Git repository", action="store_true")
+
     arguments = parser.parse_args()
 
     if os.path.isfile(arguments.target_directory):
@@ -28,10 +31,12 @@ def parse_args():
 
 
 class GitHubForkSync:
-    def __init__(self, organization, access_token, target_directory):
+    def __init__(self, organization, access_token, target_directory, clean, reset):
         self.organization = organization
         self.access_token = access_token
         self.target_directory = target_directory
+        self.clean = clean
+        self.reset = reset
 
     def sync_forks_from_page(self, page):
         template = 'https://api.github.com/orgs/{organization}/repos?type=forks&access_token={access_token}&page={page}'
@@ -102,6 +107,10 @@ class GitHubForkSync:
     def git_update_fork(self, repository):
         self.git_fetch_upstream(repository)
         self.git_checkout(repository)
+        if self.clean:
+            self.git_clean(repository)
+        if self.reset:
+            self.git_reset(repository)
         self.git_merge_upstream(repository)
         self.git_push(repository)
 
@@ -117,6 +126,20 @@ class GitHubForkSync:
         default_branch = repository['parent']['default_branch']
 
         command = 'git checkout {default_branch}'.format(default_branch=default_branch)
+
+        return self.execute_with_repository_name(command, name)
+
+    def git_clean(self, repository):
+        name = repository['parent']['name']
+
+        command = 'git clean -xfd'
+
+        return self.execute_with_repository_name(command, name)
+
+    def git_reset(self, repository):
+        name = repository['parent']['name']
+
+        command = 'git reset --hard HEAD'
 
         return self.execute_with_repository_name(command, name)
 
@@ -152,6 +175,10 @@ class GitHubForkSync:
 if __name__ == '__main__':
     args = parse_args()
 
-    gh_fork_sync = GitHubForkSync(args.organization, args.access_token, args.target_directory)
+    gh_fork_sync = GitHubForkSync(args.organization,
+                                  args.access_token,
+                                  args.target_directory,
+                                  args.clean,
+                                  args.reset)
 
     gh_fork_sync.sync_forks_from_page(1)
