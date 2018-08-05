@@ -4,7 +4,8 @@ A Python 3 script to sync forks of a GitHub organization.
 
 ## Usage
 
-    usage: gh_sync_forks.py [-h] organization access_token target_directory
+    usage: gh_sync_forks.py [-h] [-c] [-r]
+                            organization access_token target_directory
     
     Sync forks of a GitHub organization
     
@@ -15,10 +16,16 @@ A Python 3 script to sync forks of a GitHub organization.
     
     optional arguments:
       -h, --help        show this help message and exit
+      -c, --clean       clean Git repository
+      -r, --reset       reset Git repository
+
+## Dependencies
+
+This project depends on `requests` Python package to query GitHub API.
 
 ## Developers
 
-Conda environment has been created as shown below.
+Conda environment can be created as shown below.
 
     conda create --no-default-packages -p .conda python=3.7
     source activate .conda
