@@ -106,11 +106,11 @@ class GitHubForkSync:
 
     def git_update_fork(self, repository):
         self.git_fetch_upstream(repository)
-        self.git_checkout(repository)
         if self.clean:
             self.git_clean(repository)
         if self.reset:
             self.git_reset(repository)
+        self.git_checkout(repository)
         self.git_merge_upstream(repository)
         self.git_push(repository)
 
