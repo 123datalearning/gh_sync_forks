@@ -125,7 +125,7 @@ class GitHubForkSync:
         name = repository['parent']['name']
         default_branch = repository['parent']['default_branch']
 
-        command = 'git checkout --theirs {default_branch}'.format(default_branch=default_branch)
+        command = 'git checkout {default_branch}'.format(default_branch=default_branch)
 
         return self.execute_with_repository_name(command, name)
 
