@@ -147,7 +147,7 @@ class GitHubForkSync:
         name = repository['parent']['name']
         default_branch = repository['parent']['default_branch']
 
-        command = 'git merge upstream/{default_branch} --strategy-option theirs --quiet'.format(default_branch=default_branch)
+        command = 'git merge upstream/{default_branch} --strategy-option theirs --no-edit'.format(default_branch=default_branch)
 
         return self.execute_with_repository_name(command, name)
 
