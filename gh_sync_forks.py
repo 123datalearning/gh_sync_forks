@@ -138,8 +138,9 @@ class GitHubForkSync:
 
     def git_reset(self, repository):
         name = repository['parent']['name']
+        default_branch = repository['parent']['default_branch']
 
-        command = 'git reset --hard HEAD'
+        command = 'git reset --hard upstream/{default_branch}'.format(default_branch=default_branch)
 
         return self.execute_with_repository_name(command, name)
 
@@ -153,8 +154,9 @@ class GitHubForkSync:
 
     def git_push(self, repository):
         name = repository['parent']['name']
+        default_branch = repository['parent']['default_branch']
 
-        command = 'git push --all && git push --tags'
+        command = 'git push --force origin {default_branch} && git push --tags'.format(default_branch=default_branch)
 
         return self.execute_with_repository_name(command, name)
 
